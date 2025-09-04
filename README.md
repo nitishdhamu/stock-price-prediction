@@ -41,9 +41,9 @@ cd stock-price-prediction
 Create and activate a virtual environment (recommended):
 
 ```bash
-python -m venv .venv
-.venv\Scripts\activate      # Windows
-source .venv/bin/activate   # Linux / macOS
+python -m venv venv
+source venv/bin/activate   # Linux / macOS
+venv\Scripts\activate      # Windows
 ```
 
 Install dependencies:
