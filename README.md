@@ -71,7 +71,7 @@ streamlit run app_streamlit.py
 Run the pipeline directly from the command line:
 
 ```bash
-python stock_core.py --ticker AAPL --years 5
+python stock_core.py --tickers AAPL --years 5
 ```
 
 Results will be saved to:
@@ -79,6 +79,28 @@ Results will be saved to:
 ```
 outputs/AAPL/<START>_to_<END>/
 ```
+
+### Advanced CLI usage
+
+- Explicit date range:
+  ```bash
+  python stock_core.py --tickers MSFT --start 2020-01-01 --end 2025-01-01
+  ```
+
+- Multiple tickers:
+  ```bash
+  python stock_core.py --tickers "AAPL, MSFT, GOOG" --years 3
+  ```
+
+- Disable ARIMA (LSTM + GRU only):
+  ```bash
+  python stock_core.py --tickers TSLA --years 4 --no_arima
+  ```
+
+- Adjust hyperparameters:
+  ```bash
+  python stock_core.py --tickers NFLX --years 3 --lookback 90 --epochs 50 --batch_size 64
+  ```
 
 ---
 

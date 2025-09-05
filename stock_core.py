@@ -1,8 +1,10 @@
+# stock_core.py
 from __future__ import annotations
 
 import argparse
 import os
 import warnings
+from datetime import date, datetime
 
 warnings.filterwarnings("ignore")
 
@@ -22,7 +24,9 @@ np.random.seed(42)
 tf.random.set_seed(42)
 
 
-# -------------- Utilities --------------
+# ----------------------------
+# Utilities
+# ----------------------------
 def parse_tickers(ticker_text: str | None) -> list[str]:
     """Split comma/space separated tickers -> unique list preserving order."""
     if not ticker_text:
@@ -39,13 +43,15 @@ def parse_tickers(ticker_text: str | None) -> list[str]:
 
 
 def ensure_bday(df: pd.DataFrame) -> pd.DataFrame:
-    """Business-day frequency with forward-fill."""
+    """Reindex to business-day frequency and forward-fill missing prices."""
     df = df.asfreq("B")
     df["adj_close"] = df["adj_close"].ffill()
     return df
 
 
-# -------------- Data loading --------------
+# ----------------------------
+# Data loading
+# ----------------------------
 def fetch_data_yahoo_single(ticker: str, start: str, end: str | None) -> pd.DataFrame:
     """
     Fetch a single ticker from Yahoo and return DF with one column 'adj_close'.
@@ -55,22 +61,21 @@ def fetch_data_yahoo_single(ticker: str, start: str, end: str | None) -> pd.Data
     if df is None or df.empty:
         raise ValueError(f"Yahoo returned no data for {ticker}")
 
+    # Handle MultiIndex (rare) or normal flat columns
     if isinstance(df.columns, pd.MultiIndex):
-        # Try to pick the exact ticker's Adj Close if present
         try:
             sub = df["Adj Close"][ticker]
             series = pd.Series(sub, name="adj_close")
             out = series.to_frame()
         except Exception:
+            # fallback: if exactly one Adj Close exists, take it
             if "Adj Close" in df.columns.get_level_values(0):
                 sub = df["Adj Close"]
                 if isinstance(sub, pd.DataFrame) and sub.shape[1] == 1:
                     series = sub.iloc[:, 0]
                     out = series.rename("adj_close").to_frame()
                 else:
-                    raise ValueError(
-                        f"Yahoo returned multiple tickers; please pass a single ticker. Got columns: {list(df.columns)}"
-                    )
+                    raise ValueError(f"Yahoo returned multiple tickers; pass a single ticker.")
             else:
                 sub = df.xs("Close", axis=1, level=0)
                 if isinstance(sub, pd.DataFrame) and sub.shape[1] == 1:
@@ -91,7 +96,7 @@ def fetch_data_yahoo_single(ticker: str, start: str, end: str | None) -> pd.Data
 
 
 def load_local_csv(csv_like, date_col: str = "Date", price_col: str = "Adj Close") -> pd.DataFrame:
-    """Load local CSV into DF with 'adj_close'."""
+    """Load local CSV into DF with 'adj_close' column and business-day index."""
     df = pd.read_csv(csv_like)
     if date_col not in df.columns:
         raise ValueError(f"date_col '{date_col}' not found in CSV columns: {list(df.columns)}")
@@ -115,6 +120,7 @@ def get_dataset_prefer_online(
 ) -> tuple[pd.DataFrame, str]:
     """
     Prefer Yahoo for the given ticker; if it fails and a CSV is provided, use CSV.
+    Tag is the uppercase ticker or 'CSV'.
     """
     tag = ticker.upper() if ticker else "CSV"
     if ticker:
@@ -132,7 +138,9 @@ def get_dataset_prefer_online(
     return df, tag
 
 
-# -------------- Models --------------
+# ----------------------------
+# Models & helpers
+# ----------------------------
 def train_test_split_series(series: pd.Series, test_size: float = 0.2):
     n = len(series)
     n_test = max(1, int(n * test_size))
@@ -141,7 +149,8 @@ def train_test_split_series(series: pd.Series, test_size: float = 0.2):
 
 def fit_arima_grid(train: pd.Series, p_values=(0, 1, 2, 3), d_values=(0,), q_values=(0, 1, 2)):
     """
-    Fit small ARIMA grid. For returns we usually only need d=0. Keep grid small for speed.
+    Fit a small ARIMA grid and return the best fit (by AIC).
+    For returns we generally use d=0 (already stationary).
     """
     best_fit, best_aic = None, np.inf
     for p in p_values:
@@ -201,7 +210,9 @@ def build_gru(input_shape):
     return model
 
 
-# -------------- Metrics + Plot --------------
+# ----------------------------
+# Metrics + Plot
+# ----------------------------
 def rmse(y_true, y_pred):
     return float(np.sqrt(mean_squared_error(y_true, y_pred)))
 
@@ -223,7 +234,9 @@ def plot_predictions(dates, actual, preds_dict, title):
     return fig
 
 
-# -------------- Pipeline --------------
+# ----------------------------
+# Pipeline
+# ----------------------------
 def run_pipeline(
     df: pd.DataFrame,
     tag: str,
@@ -247,7 +260,6 @@ def run_pipeline(
     # -------- ARIMA on RETURNS ----------
     arima_price_pred = None
     if run_arima:
-        # build returns series from train
         train_ret = train.pct_change().dropna()
         if len(train_ret) < 5:
             raise RuntimeError("Not enough train return points for ARIMA. Reduce lookback or test_size.")
@@ -255,7 +267,6 @@ def run_pipeline(
         ret_forecast = forecast_arima(arima_fit, steps=n_test)  # predicted returns for each test step
         # re-integrate to price level: start from last train price
         last_train_price = float(train.iloc[-1])
-        # cumulative product: price_t = last_price * prod(1 + r_1..r_t)
         cum_returns = np.cumprod(1.0 + ret_forecast)
         arima_price_pred = (last_train_price * cum_returns).astype(float)
 
@@ -267,10 +278,15 @@ def run_pipeline(
 
     # sequences
     if len(train) <= lookback:
-        raise RuntimeError(f"Not enough training data relative to lookback. len(train)={len(train)}, lookback={lookback}.")
+        raise RuntimeError(
+            f"Not enough training data relative to lookback. len(train)={len(train)}, lookback={lookback}."
+        )
+
     X_all, y_all = create_sequences(scaled_full, lookback)
+    # The last len(test) samples in y_all correspond to predictions for the test set
     if n_test > X_all.shape[0]:
         raise RuntimeError("Test set is longer than possible sequence count; reduce test_size or lookback.")
+
     test_start_idx = X_all.shape[0] - n_test
     if test_start_idx <= 0:
         raise RuntimeError("Computed test_start_idx <= 0 -- not enough sequence data for training.")
@@ -303,7 +319,7 @@ def run_pipeline(
     rows.append(("GRU", rmse(y_test_actual, gru_pred), mape(y_test_actual, gru_pred)))
     metrics_df = pd.DataFrame(rows, columns=["model", "rmse", "mape(%)"])
 
-    # -------- Predictions DF (unified on test_dates) ----------
+    # -------- Predictions DF ----------
     parts = []
     if run_arima:
         parts.append(pd.DataFrame({"date": test_dates, "model": "ARIMA", "actual": test.values.astype(float).ravel(), "predicted": arima_price_pred}))
@@ -328,27 +344,15 @@ def run_pipeline(
     return metrics_df, preds_df, fig
 
 
-# -------------- Saving --------------
-def save_outputs(tag: str, metrics_df: pd.DataFrame, preds_df: pd.DataFrame, fig, output_base: str = "outputs") -> dict:
-    tag_s = tag.replace("/", "_")
-    out_dir = os.path.join(output_base, tag_s)
-    os.makedirs(out_dir, exist_ok=True)
-    mpath = os.path.join(out_dir, f"metrics_{tag_s}.csv")
-    ppath = os.path.join(out_dir, f"predictions_{tag_s}.csv")
-    fpath = os.path.join(out_dir, f"plot_{tag_s}.png")
-    metrics_df.to_csv(mpath, index=False)
-    preds_df.to_csv(ppath, index=False)
-    fig.savefig(fpath, dpi=150)
-    plt.close(fig)
-    return {"metrics": mpath, "predictions": ppath, "plot": fpath, "folder": out_dir}
-
-
-# -------------- CLI --------------
+# ----------------------------
+# CLI main
+# ----------------------------
 def main():
     ap = argparse.ArgumentParser(description="Stock Prediction: ARIMA vs LSTM vs GRU (online-first, CSV fallback)")
     ap.add_argument("--tickers", type=str, required=True, help="Single or multiple tickers (comma/space separated)")
-    ap.add_argument("--start", type=str, default="2015-01-01")
-    ap.add_argument("--end", type=str, default=None)
+    ap.add_argument("--start", type=str, default=None, help="Start date (YYYY-MM-DD). If not provided, --years will be used.")
+    ap.add_argument("--end", type=str, default=None, help="End date (YYYY-MM-DD). Defaults to today.")
+    ap.add_argument("--years", type=int, default=None, help="If --start not provided, use N years back from end (or today).")
     ap.add_argument("--csv_path", type=str, default=None, help="CSV fallback if Yahoo fails (applies to all tickers)")
     ap.add_argument("--date_col", type=str, default="Date")
     ap.add_argument("--price_col", type=str, default="Adj Close")
@@ -356,24 +360,47 @@ def main():
     ap.add_argument("--test_size", type=float, default=0.2)
     ap.add_argument("--epochs", type=int, default=20)
     ap.add_argument("--batch_size", type=int, default=32)
-    ap.add_argument("--no_arima", type=int, default=0)
+    ap.add_argument("--no_arima", action="store_true", help="If set, do not run ARIMA")
     ap.add_argument("--output_dir", type=str, default="outputs")
     args = ap.parse_args()
+
+    today = date.today()
+    # resolve end date
+    if args.end:
+        end_date = pd.to_datetime(args.end).date()
+    else:
+        end_date = today
+
+    # resolve start date
+    if args.start:
+        start_date = pd.to_datetime(args.start).date()
+    elif args.years is not None:
+        start_year = max(1900, end_date.year - int(args.years))
+        try:
+            start_date = date(start_year, end_date.month, end_date.day)
+        except Exception:
+            start_date = date(start_year, 1, 1)
+    else:
+        start_date = date(max(1900, today.year - 5), today.month, today.day)
+
+    start_str = start_date.isoformat()
+    end_str = end_date.isoformat()
 
     tickers = parse_tickers(args.tickers)
     if not tickers:
         raise SystemExit("No valid tickers provided.")
 
     for t in tickers:
-        print(f"\n=== Running pipeline for {t} ===")
+        print(f"\n=== Running pipeline for {t} ({start_str} -> {end_str}) ===")
         df, tag = get_dataset_prefer_online(
             ticker=t,
-            start=args.start,
-            end=args.end,
+            start=start_str,
+            end=end_str,
             csv_path_or_file=args.csv_path,
             date_col=args.date_col,
             price_col=args.price_col,
         )
+
         metrics_df, preds_df, fig = run_pipeline(
             df=df,
             tag=tag,
@@ -381,12 +408,27 @@ def main():
             test_size=args.test_size,
             epochs=args.epochs,
             batch_size=args.batch_size,
-            run_arima=(args.no_arima == 0),
+            run_arima=(not args.no_arima),
         )
-        paths = save_outputs(tag, metrics_df, preds_df, fig, output_base=args.output_dir)
+
+        # save outputs to outputs/<TICKER>/<start>_to_<end>/
+        out_base = args.output_dir
+        safe_tag = tag.replace("/", "_").upper()
+        out_dir = os.path.join(out_base, safe_tag, f"{start_str}_to_{end_str}")
+        os.makedirs(out_dir, exist_ok=True)
+        mpath = os.path.join(out_dir, f"metrics_{safe_tag}.csv")
+        ppath = os.path.join(out_dir, f"predictions_{safe_tag}.csv")
+        fpath = os.path.join(out_dir, f"plot_{safe_tag}.png")
+
+        metrics_df.to_csv(mpath, index=False)
+        preds_df.to_csv(ppath, index=False)
+        if fig is not None:
+            fig.savefig(fpath, dpi=150, bbox_inches="tight")
+            plt.close(fig)
+
         print(metrics_df.to_string(index=False))
-        print(f"[saved] {paths['metrics']}\n        {paths['predictions']}\n        {paths['plot']}")
-        print(f"[folder] {paths['folder']}")
+        print(f"[saved] {mpath}\n        {ppath}\n        {fpath}")
+        print(f"[folder] {out_dir}")
 
 
 if __name__ == "__main__":
