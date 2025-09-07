@@ -1,10 +1,7 @@
 """
 Streamlit app for Stock Price Prediction (LSTM).
 
-- Clean, minimal, and production-ready for client submission.
-- Uses utils.py for data operations and model.py to build the LSTM.
-- Lazy-imports heavy libraries to reduce cold-start overhead.
-- Clear but minimal comments only where needed.
+Minimal, production-ready. Only necessary comments and no unused code.
 """
 
 import os
@@ -73,7 +70,7 @@ with st.sidebar:
     run_button = st.button("Run", use_container_width=True)
 # -------------------------------------------------------
 
-# Lazy-import helper (keeps app fast on import)
+# Lazy-import helper
 def _lazy():
     import numpy as np
     import pandas as pd
@@ -82,7 +79,7 @@ def _lazy():
     return {"np": np, "pd": pd, "MinMaxScaler": MinMaxScaler, "model_from_json": model_from_json}
 
 
-# Caches data fetches to avoid repeated downloads
+# Cached data fetch
 @st.cache_data(show_spinner=False)
 def fetch_data_cached(ticker: str, months: int, use_max_flag: bool, start_dt, end_dt):
     libs = _lazy()
@@ -108,7 +105,7 @@ def fetch_data_cached(ticker: str, months: int, use_max_flag: bool, start_dt, en
     return df
 
 
-# Caches model architecture/weights loading or builds a fresh model
+# Cached model loader/builder
 @st.cache_resource(show_spinner=False)
 def load_or_build_model_cached(save_dir: str, window_size: int, units: int, dropout: float, lr: float):
     libs = _lazy()
@@ -131,9 +128,8 @@ def load_or_build_model_cached(save_dir: str, window_size: int, units: int, drop
     return model
 
 
-# Sequence creation & scaling utilities (delegates to utils.py when possible)
+# Prepare series: uses utils.scale_series
 def prepare_series(series, scaler=None):
-    # keep minimal logic here; utils.scale_series covers common cases but we keep a thin wrapper
     from utils import scale_series
     scaled, scaler = scale_series(series, scaler)
     return scaled, scaler
@@ -218,8 +214,14 @@ if run_button:
 
             # Prepare DataFrames for display
             df_forecast = pd.DataFrame({"predicted_close": preds}, index=future_index)
-            hist_series = df["close"].copy().rename("historical_close")
-            forecast_series = df_forecast["predicted_close"].copy().rename("forecast_close")
+
+            # Avoid ambiguous Series.rename(...) call which can trigger 'str' object is not callable
+            hist_series = df["close"].copy()
+            hist_series.name = "historical_close"
+
+            forecast_series = df_forecast["predicted_close"].copy()
+            forecast_series.name = "forecast_close"
+
             combined = pd.concat([hist_series, forecast_series], axis=1).sort_index()
 
             # Top metrics: latest actual and last predicted price
