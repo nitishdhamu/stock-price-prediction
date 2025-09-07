@@ -65,6 +65,7 @@ It fetches data directly from **Yahoo Finance** and provides interactive visuali
 
 3. Install dependencies:
    ```bash
+   pip install --upgrade pip
    pip install -r requirements.txt
    ```
 
