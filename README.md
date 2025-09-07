@@ -45,7 +45,7 @@ It fetches data directly from **Yahoo Finance** and provides interactive visuali
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/your-username/stock-price-prediction.git
+   git clone https://github.com/nitishdhamu/stock-price-prediction.git
    cd stock-price-prediction
    ```
 
