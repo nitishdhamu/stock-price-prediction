@@ -1,140 +1,142 @@
-# 📈 Stock Price Prediction (ML/Time Series)
+# 📈 Stock Price Prediction (LSTM + Streamlit)
 
-⚠️ **For research & education only — not for financial or trading use.**
-
-This project provides a complete machine learning pipeline for **stock price prediction** using **ARIMA, LSTM, and GRU** models.  
-It supports fetching stock data from **Yahoo Finance (online)** or uploading your own **CSV (offline)**.  
-
-You can use:  
-- 🖥️ **Streamlit Web UI** (recommended)  
-- 💻 **CLI (optional)** for automation  
+A simple web application built with **Streamlit** and **TensorFlow/Keras** that predicts future stock prices using an **LSTM (Long Short-Term Memory) neural network**.  
+It fetches data directly from **Yahoo Finance** and provides interactive visualization of both historical and predicted prices.
 
 ---
 
 ## 🚀 Features
 
-- Fetch stock data from **Yahoo Finance** or upload **CSV**  
-- Train and compare **ARIMA, LSTM, GRU** models  
-- Evaluate predictions with metrics: **RMSE** and **MAPE**  
-- Visualize **actual vs predicted prices**  
-- Save outputs into structured folders:
-  ```
-  outputs/<TICKER>/<START>_to_<END>/
-  ├── metrics_<TICKER>.csv
-  ├── predictions_<TICKER>.csv
-  └── plot_<TICKER>.png
-  ```
+- Fetches stock data from **Yahoo Finance**
+- Select custom history period or use maximum available data
+- Adjust forecast horizon (1–30 days ahead)
+- Interactive charts for historical + predicted prices
+- Latest actual price and forecast displayed at the top
+- Lightweight LSTM model with auto-regressive forecasting
 
 ---
 
-## 📥 Clone the Repository
+## 🛠️ Tech Stack
 
-```bash
-git clone https://github.com/nitishdhamu/stock-price-prediction.git
-cd stock-price-prediction
-```
-
----
-
-## ⚙️ Installation
-
-Create and activate a virtual environment (recommended):
-
-```bash
-python -m venv .venv
-.venv\Scripts\activate      # Windows
-source .venv/bin/activate   # Linux / macOS
-```
-
-Install dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
----
-
-## 🖥️ Run Streamlit UI (Recommended)
-
-```bash
-streamlit run app_streamlit.py
-```
-
-- Select **Mode**: Online (Yahoo) or Offline (CSV)  
-- Pick a ticker (e.g., `AAPL`, `MSFT`, etc.) or upload your own CSV  
-- Choose duration, run models, and download results  
-
----
-
-## 💻 Run CLI (Optional)
-
-Run the pipeline directly from the command line:
-
-```bash
-python stock_core.py --tickers AAPL --years 5
-```
-
-Results will be saved to:
-
-```
-outputs/AAPL/<START>_to_<END>/
-```
-
-### Advanced CLI usage
-
-- Explicit date range:
-  ```bash
-  python stock_core.py --tickers MSFT --start 2020-01-01 --end 2025-01-01
-  ```
-
-- Multiple tickers:
-  ```bash
-  python stock_core.py --tickers "AAPL, MSFT, GOOG" --years 3
-  ```
-
-- Disable ARIMA (LSTM + GRU only):
-  ```bash
-  python stock_core.py --tickers TSLA --years 4 --no_arima
-  ```
-
-- Adjust hyperparameters:
-  ```bash
-  python stock_core.py --tickers NFLX --years 3 --lookback 90 --epochs 50 --batch_size 64
-  ```
-
----
-
-## 📊 Example Output
-
-```
-outputs/AAPL/2020-01-01_to_2025-01-01/
-  ├── metrics_AAPL.csv
-  ├── predictions_AAPL.csv
-  └── plot_AAPL.png
-```
+- **Python 3.10+**
+- [Streamlit](https://streamlit.io) — web app framework
+- [TensorFlow / Keras](https://www.tensorflow.org) — deep learning
+- [scikit-learn](https://scikit-learn.org) — preprocessing
+- [yfinance](https://pypi.org/project/yfinance/) — stock data
+- [NumPy](https://numpy.org), [Pandas](https://pandas.pydata.org) — data handling
 
 ---
 
 ## 📂 Project Structure
 
 ```
-├── app_streamlit.py        # Streamlit UI
-├── stock_core.py           # Core pipeline (data, training, saving)
-├── requirements.txt        # Dependencies
-├── README.md               # Documentation
-├── LICENSE                 # MIT License
-└── outputs/                # Results (per run)
+.
+├── app.py             # Main Streamlit application
+├── model.py           # LSTM model builder and training utilities
+├── utils.py           # Data utilities (fetch, scale, sequence creation)
+├── prebuild.py        # Optional TensorFlow warm-up script
+├── requirements.txt   # Dependencies
+└── README.md          # Project documentation
 ```
 
 ---
 
-## ⚖️ License
+## ⚙️ Installation
 
-This project is licensed under the **MIT License**.  
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/your-username/stock-price-prediction.git
+   cd stock-price-prediction
+   ```
+
+2. Create a virtual environment:
+
+   **Windows:**
+   ```bash
+   python -m venv .venv
+   .venv\Scripts\activate
+   ```
+
+   **Mac/Linux:**
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate
+   ```
+
+3. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
 ---
 
-## 🙋 About
+## ▶️ Usage
 
-- Built for **AI/ML Time Series analysis** learning, internships, and forecasting experiments  
-- Includes both **UI for beginners** and **CLI (optional)** for advanced users  
+1. (Optional) Warm up TensorFlow to reduce first-run latency:
+   ```bash
+   python prebuild.py
+   ```
+
+2. Run the Streamlit app:
+   ```bash
+   streamlit run app.py
+   ```
+
+3. Open the app in your browser (default: [http://localhost:8501](http://localhost:8501)).
+
+---
+
+## 📊 Example
+
+- Enter ticker: `AAPL` (Apple), `MSFT` (Microsoft), or `RELIANCE.NS` (Reliance India).
+- Choose history period: e.g., `12` months.
+- Select forecast horizon: e.g., `7` days.
+- Click **Run** → View predictions on chart & table.
+
+---
+
+## 🔧 Configuration
+
+You can adjust hyperparameters inside `app.py`:
+
+```python
+DEFAULT_WINDOW_SIZE = 60
+EPOCHS = 5
+UNITS = 50
+LEARNING_RATE = 0.001
+DROPOUT = 0.2
+```
+
+To use a pre-trained model, place files in `models/initial/`:
+
+- `model_architecture.json`
+- `initial_weights.h5`
+
+---
+
+## ⚠️ Notes
+
+- This app is for **educational/demo purposes** only — not financial advice.
+- Stock market data is noisy; LSTM predictions may vary.
+- For serious use: extend training, use early stopping, and validate thoroughly.
+
+---
+
+## 🤝 Contributing
+
+Pull requests are welcome.  
+For major changes, open an issue first to discuss what you’d like to change.
+
+---
+
+## 📄 License
+
+This project is provided under the **MIT License**.  
+You are free to use, modify, and distribute it with attribution.
+
+---
+
+## 👨‍💻 Author
+
+Developed as part of an **AI/ML project**.  
+For customization or client-specific deployment, please contact via GitHub profile.
