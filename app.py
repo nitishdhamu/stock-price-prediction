@@ -1,15 +1,8 @@
-"""
-Streamlit app for Stock Price Prediction (LSTM).
-
-Minimal, production-ready. Only necessary comments and no unused code.
-"""
-
 import os
 from datetime import date, timedelta
-
 import streamlit as st
 
-# Project defaults / hyperparameters
+# Hyperparameters / defaults
 DEFAULT_WINDOW_SIZE = 60
 EPOCHS = 5
 UNITS = 50
@@ -21,10 +14,19 @@ MIN_ALLOWED_WINDOW = 3
 st.set_page_config(page_title="Stock Price Prediction", layout="wide")
 st.title("Stock Price Prediction")
 
-# ---------------- Sidebar: user controls ----------------
+# ---------------- Sidebar ----------------
 with st.sidebar:
     st.header("Settings")
-    ticker = st.text_input("Ticker (Yahoo)", value="AAPL", placeholder="AAPL, MSFT, RELIANCE.NS")
+
+    raw_input = st.text_input(
+        "Enter Ticker (Yahoo Finance)",
+        value="TITAN.NS",
+        placeholder="e.g. TITAN.NS, RELIANCE.BO"
+    )
+    ticker = raw_input.strip().upper() if raw_input else ""
+
+    st.caption("💡 For Indian stocks, add `.NS` (NSE) or `.BO` (BSE). Example: TITAN.NS, RELIANCE.BO")
+
     months = st.number_input("History period (months)", min_value=1, max_value=120, value=12, step=1)
     use_max = st.checkbox("Use maximum available history", value=False)
 
@@ -44,10 +46,10 @@ with st.sidebar:
     start = st.date_input("Start", value=default_start)
     end = st.date_input("End", value=default_end)
 
-    forecast_days = st.number_input("Forecast days", min_value=1, max_value=30, value=7, step=1,
-                                    help="How many days to forecast ahead")
+    forecast_days = st.number_input(
+        "Forecast days", min_value=1, max_value=30, value=7, step=1, help="How many days to forecast ahead"
+    )
 
-    # Emphasized run button style
     st.markdown(
         """
         <style>
@@ -68,9 +70,9 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
     run_button = st.button("Run", use_container_width=True)
-# -------------------------------------------------------
+# ------------------------------------------
 
-# Lazy-import helper
+
 def _lazy():
     import numpy as np
     import pandas as pd
@@ -79,12 +81,11 @@ def _lazy():
     return {"np": np, "pd": pd, "MinMaxScaler": MinMaxScaler, "model_from_json": model_from_json}
 
 
-# Cached data fetch
 @st.cache_data(show_spinner=False)
 def fetch_data_cached(ticker: str, months: int, use_max_flag: bool, start_dt, end_dt):
     libs = _lazy()
-    yf = __import__("yfinance")
     pd = libs["pd"]
+    yf = __import__("yfinance")
 
     if start_dt is not None and end_dt is not None and start_dt != end_dt:
         start_str = pd.to_datetime(start_dt).date().isoformat()
@@ -105,7 +106,37 @@ def fetch_data_cached(ticker: str, months: int, use_max_flag: bool, start_dt, en
     return df
 
 
-# Cached model loader/builder
+@st.cache_data(show_spinner=False)
+def get_currency_symbol_cached(ticker: str) -> str:
+    """Return currency symbol for the ticker using yfinance metadata."""
+    yf = __import__("yfinance")
+    try:
+        t = yf.Ticker(ticker)
+        info = {}
+        fast = getattr(t, "fast_info", None)
+        if fast and isinstance(fast, dict):
+            info = fast
+        else:
+            info = t.info or {}
+        currency = info.get("currency") or info.get("quoteCurrency") or info.get("currencySymbol")
+        if not currency and isinstance(fast, dict):
+            currency = fast.get("currency")
+        if not currency:
+            return ""
+        cur = currency.upper().strip()
+    except Exception:
+        return ""
+
+    symbols = {
+        "USD": "$",
+        "INR": "₹",
+        "EUR": "€",
+        "GBP": "£",
+        "JPY": "¥",
+    }
+    return symbols.get(cur, cur)
+
+
 @st.cache_resource(show_spinner=False)
 def load_or_build_model_cached(save_dir: str, window_size: int, units: int, dropout: float, lr: float):
     libs = _lazy()
@@ -128,7 +159,6 @@ def load_or_build_model_cached(save_dir: str, window_size: int, units: int, drop
     return model
 
 
-# Prepare series: uses utils.scale_series
 def prepare_series(series, scaler=None):
     from utils import scale_series
     scaled, scaler = scale_series(series, scaler)
@@ -143,7 +173,7 @@ def create_sequences(values, window_size):
 # ---------------- Main pipeline ----------------
 if run_button:
     if not ticker or not ticker.strip():
-        st.error("Please enter a ticker (e.g., AAPL).")
+        st.error("Please enter a ticker (e.g., TITAN.NS, RELIANCE.BO, AAPL).")
     else:
         raw_ticker = ticker.strip().upper()
         status = st.empty()
@@ -156,6 +186,9 @@ if run_button:
             if df.empty:
                 st.warning("No historical data found for the ticker/period specified.")
                 st.stop()
+
+            status.info("Detecting currency...")
+            currency_symbol = get_currency_symbol_cached(raw_ticker) or ""
 
             status.info("Preparing series...")
             scaled_vals, scaler = prepare_series(df["close"])
@@ -190,7 +223,6 @@ if run_button:
             model.fit(X_train, y_train, epochs=EPOCHS, batch_size=32, verbose=0)
             status.success("Training complete.")
 
-            # Forecast generation (auto-regressive in scaled space)
             n_forecast = int(forecast_days)
             libs = _lazy()
             np = libs["np"]
@@ -212,10 +244,8 @@ if run_button:
             future_dates = [last_date + timedelta(days=i) for i in range(1, n_forecast + 1)]
             future_index = pd.to_datetime(future_dates)
 
-            # Prepare DataFrames for display
             df_forecast = pd.DataFrame({"predicted_close": preds}, index=future_index)
 
-            # Avoid ambiguous Series.rename(...) call which can trigger 'str' object is not callable
             hist_series = df["close"].copy()
             hist_series.name = "historical_close"
 
@@ -224,39 +254,43 @@ if run_button:
 
             combined = pd.concat([hist_series, forecast_series], axis=1).sort_index()
 
-            # Top metrics: latest actual and last predicted price
-            try:
-                latest_actual_val = float(hist_series.iloc[-1])
-            except Exception:
-                latest_actual_val = 0.0
-
-            try:
-                last_predicted_val = float(forecast_series.iloc[-1])
-            except Exception:
-                last_predicted_val = 0.0
+            latest_actual_val = float(hist_series.iloc[-1]) if not hist_series.empty else 0.0
+            last_predicted_val = float(forecast_series.iloc[-1]) if not forecast_series.empty else 0.0
 
             pct_change = None
             if latest_actual_val != 0.0:
                 pct_change = (last_predicted_val - latest_actual_val) / latest_actual_val * 100.0
 
             col1, col2 = st.columns(2)
-            col1.metric(label="📌 Latest Actual Price", value=f"${latest_actual_val:,.2f}")
+            col1.metric(label="📌 Latest Actual Price", value=f"{currency_symbol}{latest_actual_val:,.2f}")
             delta_val = f"{pct_change:+.2f}%" if pct_change is not None else ""
-            col2.metric(label=f"🔮 Predicted Price ({future_index[-1].date().isoformat()})",
-                        value=f"${last_predicted_val:,.2f}", delta=delta_val)
+            col2.metric(
+                label=f"🔮 Predicted Price ({future_index[-1].date().isoformat()})",
+                value=f"{currency_symbol}{last_predicted_val:,.2f}",
+                delta=delta_val,
+            )
 
             st.divider()
 
-            # Chart and table
-            st.subheader(f"📈 {raw_ticker} — Historical ({months} month{'s' if months > 1 else ''}) & {n_forecast}-Day Forecast")
+            st.subheader(
+                f"📈 {raw_ticker} — Historical ({months} month{'s' if months > 1 else ''}) & {n_forecast}-Day Forecast"
+            )
             st.line_chart(combined)
 
             st.subheader(f"📊 {n_forecast}-Day Forecast Data")
-            df_forecast_display = pd.DataFrame({
-                "date": [d.date().isoformat() for d in future_index],
-                "predicted_close": preds
-            }).set_index("date")
-            st.dataframe(df_forecast_display.style.format({"predicted_close": "{:.2f}"}))
+            df_forecast_display = pd.DataFrame(
+                {"date": [d.date().isoformat() for d in future_index], "predicted_close": preds}
+            ).set_index("date")
+
+            display_format = "{:,.2f}"
+            if currency_symbol:
+                st.dataframe(
+                    df_forecast_display.style.format(
+                        {"predicted_close": lambda v: f"{currency_symbol}{display_format.format(v)}"}
+                    )
+                )
+            else:
+                st.dataframe(df_forecast_display.style.format({"predicted_close": display_format}))
 
             status.success("Done.")
 

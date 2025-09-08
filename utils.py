@@ -1,11 +1,3 @@
-"""
-Utility functions for data fetching, scaling, and sequence creation.
-
-- fetch_data: downloads OHLCV from Yahoo Finance and returns a DataFrame with 'close' column.
-- scale_series: scales a pandas Series to [0,1] using MinMaxScaler.
-- create_sequences: prepares sliding windows for LSTM input.
-"""
-
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler

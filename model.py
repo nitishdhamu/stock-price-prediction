@@ -1,8 +1,3 @@
-"""
-Model utilities: build and (optionally) train a simple LSTM model.
-Kept minimal and documented for client handoff.
-"""
-
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense, Dropout
 from tensorflow.keras.optimizers import Adam

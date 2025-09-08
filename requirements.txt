@@ -10,6 +10,3 @@ tensorflow>=2.13.0
 
 # Optional / utilities
 matplotlib>=3.8.0
-
-# Lock file note:
-# If you need exact reproducibility, generate a pip freeze output from your environment and replace these with pinned versions.

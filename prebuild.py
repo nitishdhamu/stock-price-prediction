@@ -1,10 +1,3 @@
-#!/usr/bin/env python3
-"""
-TensorFlow warm-up script (optional).
-
-Run once before launching the Streamlit app to reduce first-run latency.
-"""
-
 import time
 import sys
 import numpy as np
